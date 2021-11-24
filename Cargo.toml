@@ -1,7 +1,15 @@
 [package]
 name = "dynamic-lru-cache"
 version = "0.1.0"
+authors = ["Scott Teal"]
+readme = "README.md"
 edition = "2021"
+categories = [ "caching" ]
+keywords = ["caching", "cache", "lru"]
+repository = "https://github.com/Cognoscan/dynamic-lru-cache"
+documentation = "http://docs.rs/dynamic-lru-cache"
+license = "MIT OR Apache-2.0"
+description = "LRU Cache that only stores items recently seen more than once."
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
