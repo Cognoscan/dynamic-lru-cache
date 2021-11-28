@@ -70,7 +70,9 @@ impl <K: Clone + Eq + Hash, V> DynamicCacheLocal<K, V> {
         }
     }
 
-    fn get(&mut self, key: &K) -> Option<Arc<V>> {
+    /// Attempt to retrieve a value from the cache. This updates the cache's memory of what values 
+    /// have been requested.
+    pub fn get(&mut self, key: &K) -> Option<Arc<V>> {
         let (counter, ret) = match self.map.get_mut(key) {
             Some((counter, Some(v))) => {
                 *counter += 1;
@@ -109,17 +111,20 @@ impl <K: Clone + Eq + Hash, V> DynamicCacheLocal<K, V> {
         ret
     }
 
-    fn insert(&mut self, key: &K, v: V) -> Arc<V> {
-        let (counter, val) = self.map.get_mut(key).expect("Cache hashmap should have this key");
-        if *counter == 0 { Arc::new(v) }
-        else if let Some(val) = val {
-            val.clone()
-        }
-        else {
-            let v = Arc::new(v);
-            *val = Some(v.clone());
-            self.size += 1;
-            v
+    /// Insert a value into the cache. If the value is already present, an `Arc<V>` of the stored 
+    /// value is returned. If the value is not stored but has been requested more than once, then 
+    /// it is stored and returned. If the value is not stored and hasn't been requested more than 
+    /// once, it is not stored and is simply returned, wrapped as an `Arc<V>`.
+    pub fn insert(&mut self, key: &K, v: V) -> Arc<V> {
+        match self.map.get_mut(key) {
+            None | Some((0, _)) => Arc::new(v),
+            Some((_, Some(val))) => val.clone(),
+            Some((_, val @ None)) => {
+                let v = Arc::new(v);
+                *val = Some(v.clone());
+                self.size += 1;
+                v
+            }
         }
     }
 
@@ -225,11 +230,17 @@ impl <K: Clone + Eq + Hash, V> DynamicCache<K, V> {
         Self { cache: Arc::new(Mutex::new(DynamicCacheLocal::new(mem_len))) }
     }
 
-    fn get(&self, key: &K) -> Option<Arc<V>> {
+    /// Attempt to retrieve a value from the cache. This updates the cache's memory of what values 
+    /// have been requested.
+    pub fn get(&self, key: &K) -> Option<Arc<V>> {
         self.cache.lock().get(key)
     }
 
-    fn insert(&self, key: &K, value: V) -> Arc<V> {
+    /// Insert a value into the cache. If the value is already present, an `Arc<V>` of the stored 
+    /// value is returned. If the value is not stored but has been requested more than once, then 
+    /// it is stored and returned. If the value is not stored and hasn't been requested more than 
+    /// once, it is not stored and is simply returned, wrapped as an `Arc<V>`.
+    pub fn insert(&self, key: &K, value: V) -> Arc<V> {
         self.cache.lock().insert(key, value)
     }
 
@@ -281,7 +292,38 @@ mod test {
     use rand::prelude::*;
 
     #[test]
-    fn do_it() {
+    fn fetch_test() {
+        let (key, val) = (0, String::from("0"));
+        let cache = DynamicCache::new(8);
+        assert_eq!(cache.size(), 0);
+        assert_eq!(cache.mem_len(), 8);
+        assert_eq!(cache.hits_misses(), (0,0));
+
+        assert!(cache.get(&key) == None, "First `get` should have nothing in cache");
+        assert_eq!(cache.size(), 0);
+        assert_eq!(cache.hits_misses(), (0,1));
+
+        assert!(cache.insert(&key, val.clone()).as_ref() == &val, "Insert should return right value");
+        assert_eq!(cache.size(), 0);
+        assert_eq!(cache.hits_misses(), (0,1));
+
+        assert!(cache.get(&key) == None, "Second `get` should still have nothing in cache");
+        assert_eq!(cache.size(), 0);
+        assert_eq!(cache.hits_misses(), (0,2));
+
+        assert!(cache.insert(&key, val.clone()).as_ref() == &val, "Insert should return right value");
+        assert_eq!(cache.size(), 1);
+        assert_eq!(cache.hits_misses(), (0,2));
+
+        assert!(cache.get(&key).map_or(false, |x| x.as_ref() == &val), "Third `get` should have a value in cache");
+        assert_eq!(cache.size(), 1);
+        assert_eq!(cache.hits_misses(), (1,2));
+
+        assert_eq!(cache.mem_len(), 8);
+    }
+
+    #[test]
+    fn stress_test() {
         let sample_size = 1<<12;
         let cache = DynamicCache::new(128);
 
@@ -351,7 +393,5 @@ mod test {
         }
         let hit_rate = 100.0 * f64::from(sample_size-misses) / f64::from(sample_size);
         println!("Random u16 with log2 frequent requests, Cache size: {:3}, hit rate for main data = {:4.1}%", cache.size(), hit_rate);
-
-        panic!();
     }
 }
