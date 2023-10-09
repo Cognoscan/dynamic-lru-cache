@@ -14,7 +14,7 @@
 //! Sure, a fixed size cache that stores "seen once" items would also work, but
 //! the memory usage would be higher than really necessary. Hence, this crate.
 
-use parking_lot::Mutex;
+use std::sync::Mutex;
 use std::collections::hash_map::RandomState;
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
@@ -112,6 +112,16 @@ impl<K: Clone + Eq + Hash, V> DynamicCacheLocal<K, V> {
         }
 
         ret
+    }
+
+    /// Attempt to remove a value from the cache.
+    ///
+    /// This will remove the value itself from the cache, but doesn't change the cache's stored 
+    /// request history. This means that any new [`get_or_insert`] calls will re-load the value 
+    /// into the cache.
+    pub fn pop(&mut self, key: &K) -> Option<Arc<V>> {
+        let Some((_, v)) = self.map.get_mut(key) else { return None };
+        v.take()
     }
 
     /// Insert a value into the cache. If the value is already present, an `Arc<V>` of the stored
@@ -243,7 +253,16 @@ impl<K: Clone + Eq + Hash, V> DynamicCache<K, V> {
     /// Attempt to retrieve a value from the cache. This updates the cache's memory of what values
     /// have been requested.
     pub fn get(&self, key: &K) -> Option<Arc<V>> {
-        self.cache.lock().get(key)
+        self.cache.lock().unwrap().get(key)
+    }
+
+    /// Attempt to remove a value from the cache.
+    ///
+    /// This will remove the value itself from the cache, but doesn't change the cache's stored 
+    /// request history. This means that any new [`get_or_insert`] calls will re-load the value 
+    /// into the cache.
+    pub fn pop(&self, key: &K) -> Option<Arc<V>> {
+        self.cache.lock().unwrap().pop(key)
     }
 
     /// Insert a value into the cache. If the value is already present, an `Arc<V>` of the stored
@@ -251,7 +270,7 @@ impl<K: Clone + Eq + Hash, V> DynamicCache<K, V> {
     /// it is stored and returned. If the value is not stored and hasn't been requested more than
     /// once, it is not stored and is simply returned, wrapped as an `Arc<V>`.
     pub fn insert(&self, key: &K, value: V) -> Arc<V> {
-        self.cache.lock().insert(key, value)
+        self.cache.lock().unwrap().insert(key, value)
     }
 
     /// Fetch an item via the cache, potentially filling in the cache on a miss via the function
@@ -263,34 +282,34 @@ impl<K: Clone + Eq + Hash, V> DynamicCache<K, V> {
 
     /// Get the number of items currently stored in the cache.
     pub fn size(&self) -> usize {
-        self.cache.lock().size()
+        self.cache.lock().unwrap().size()
     }
 
     /// Get the length of the cache's recent request memory.
     pub fn mem_len(&self) -> usize {
-        self.cache.lock().mem_len()
+        self.cache.lock().unwrap().mem_len()
     }
 
     /// Change the length of the cache's recent request memory. Some contents of the cache may be
     /// removed immediately if the new memory length is shorter than the old memory length.
     pub fn set_mem_len(&self, new_len: usize) {
-        self.cache.lock().set_mem_len(new_len)
+        self.cache.lock().unwrap().set_mem_len(new_len)
     }
 
     /// Clear out all stored values and all memory in the cache.
     pub fn clear_cache(&self) {
-        self.cache.lock().clear_cache()
+        self.cache.lock().unwrap().clear_cache()
     }
 
     /// Get the cache metrics as a pair `(hits, misses)`.
     pub fn hits_misses(&self) -> (u64, u64) {
-        let cache = self.cache.lock();
+        let cache = self.cache.lock().unwrap();
         (cache.hits(), cache.misses())
     }
 
     /// Reset the cache hit/miss metrics.
     pub fn reset_metrics(&self) {
-        self.cache.lock().reset_metrics()
+        self.cache.lock().unwrap().reset_metrics()
     }
 }
 
@@ -308,7 +327,7 @@ mod test {
         assert_eq!(cache.hits_misses(), (0, 0));
 
         assert!(
-            cache.get(&key) == None,
+            cache.get(&key).is_none(),
             "First `get` should have nothing in cache"
         );
         assert_eq!(cache.size(), 0);
@@ -322,7 +341,7 @@ mod test {
         assert_eq!(cache.hits_misses(), (0, 1));
 
         assert!(
-            cache.get(&key) == None,
+            cache.get(&key).is_none(),
             "Second `get` should still have nothing in cache"
         );
         assert_eq!(cache.size(), 0);

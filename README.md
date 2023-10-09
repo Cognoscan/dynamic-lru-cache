@@ -17,7 +17,7 @@ fetched twice, and that most of the time the number of items benefit from
 caching will be small. Good use cases: parsing large data structures that 
 frequently cross-reference the same data chunk, reading a set of 
 dictionary-compressed files where there are several different but shared 
-dictionary, reading many files that all refer to shared parser profiles (eg. 
+dictionaries, reading many files that all refer to shared parser profiles (eg. 
 color profiles in images), etc.
 
 Sure, a fixed size cache that stores "seen once" items would also work, but the 
