@@ -1,6 +1,6 @@
 [package]
 name = "dynamic-lru-cache"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Scott Teal"]
 readme = "README.md"
 edition = "2021"
